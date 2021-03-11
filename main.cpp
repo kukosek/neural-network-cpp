@@ -124,18 +124,11 @@ void NeuralNetwork::train_on(VectorXd target_outcome) {
 			layer->z.unaryExpr(&derivativeOfReluOf).array()).matrix();
 		MatrixXd weight_gradient = bias_gradient *
 			last_layer->activations.transpose();
-		/*std::cout << "uspech weight gradientu" << std::endl;
 
-		std::cout << "weight gradient :" << weight_gradient.rows() << "x" <<
-			weight_gradient.cols() << std::endl;
-			*/
 
 		// Add it to the sum
 		layer->bias_gradients_sum += bias_gradient;
-		//std::cout << "1 pricteni " << std::endl;
 		last_layer->weight_gradients_sum += weight_gradient;
-
-		//std::cout << "uspech pricteni do sumy" << std::endl;
 
 		// Calculate A cost gradient that will be used for calculations
 		// of weight and bias gradients in the next layer
@@ -143,11 +136,6 @@ void NeuralNetwork::train_on(VectorXd target_outcome) {
 			 layer->z.unaryExpr(&derivativeOfReluOf).array() *
 			a_cost_gradient.array()
 			 ).matrix();
-
-		/*std::cout << "conn weights: " << last_layer->connection_weights.transpose().rows() << "x" <<
-last_layer->connection_weights.transpose().cols();
-		std::cout << "tmp_m: " << tmp_m.rows() << "x" << tmp_m.cols() << std::endl;
-		*/
 
 
 		a_cost_gradient = last_layer->connection_weights.transpose() *
@@ -200,8 +188,8 @@ int main(int argc, char* argv[]) {
 	std::cout << "starting training" << std::endl;
 	network.reset_training_batch();
 
-	const int batch_n_images = 10;
-	for (int image_batch=0; image_batch < 1000; image_batch++) {
+	const int batch_n_images = 20;
+	for (int image_batch=0; image_batch < dataset.training_images.size()/batch_n_images; image_batch++) {
 		for (int image_idx=0; image_idx <  batch_n_images; image_idx++) {
 
 			int image_result_idx = image_batch*batch_n_images + image_idx;
@@ -233,7 +221,6 @@ int main(int argc, char* argv[]) {
 		}
 
 		network.calculate();
-		//std::cout << network.layers[1].z << std::endl;
 
 
 		VectorXd desired = VectorXd::Constant(10, 0.0);
