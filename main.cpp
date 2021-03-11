@@ -1,4 +1,5 @@
 #include <iostream>
+#include <time.h>
 #include <vector>
 #include "mnist/mnist_reader.hpp"
 #include <Eigen/Dense>
@@ -7,13 +8,14 @@ using Eigen::VectorXd;
 using Eigen::MatrixXd;
 
 struct Layer {
+	VectorXd z;
 	VectorXd activations;
 
 	MatrixXd connection_weights;
-	MatrixXd training_connection_weightsums;
+	MatrixXd weight_gradients_sum;
 
 	VectorXd biases;
-	VectorXd training_biases_sum;
+	VectorXd bias_gradients_sum;
 };
 
 class NeuralNetwork {
@@ -25,6 +27,7 @@ class NeuralNetwork {
 		void train_on(VectorXd target_outcome);
 		void apply_training_batch();
 		void reset_training_batch();
+		double training_rate = 0.00005;
 	private:
 		void backprop(unsigned int layer_idx, VectorXd expected);
 
@@ -40,7 +43,7 @@ void NeuralNetwork::reset_training_batch() {
 		Layer * layer = &layers[layer_idx];
 
 		// reset matrix of summed training results
-		layer->training_connection_weightsums =
+		layer->weight_gradients_sum =
 			MatrixXd::Constant(
 				layer->connection_weights.rows(),
 				layer->connection_weights.cols(),
@@ -48,7 +51,7 @@ void NeuralNetwork::reset_training_batch() {
 			);
 
 		// same thing but for biases
-		layer->training_biases_sum =
+		layer->bias_gradients_sum =
 			VectorXd::Constant(
 					layer->biases.rows(),
 					0.0
@@ -62,14 +65,18 @@ void NeuralNetwork::apply_training_batch() {
 	for (int layer_idx = 0; layer_idx < layers.size(); layer_idx++) {
 		Layer * layer = &layers[layer_idx];
 
-		layer->connection_weights =
-			layer->training_connection_weightsums / training_count;
-		layer->biases =
-			layer->training_biases_sum / training_count;
+		MatrixXd weight_avg_gradient =(layer->weight_gradients_sum / training_count);
+		layer->connection_weights -=
+			weight_avg_gradient * training_rate;
+		layer->biases -=
+			(layer->bias_gradients_sum / training_count) * training_rate;
 	}
 
 }
 
+double map01(double x) {
+	return (x+1) / 2;
+}
 
 void NeuralNetwork::add_layer(unsigned int size) {
 	layers.push_back(Layer());
@@ -84,101 +91,93 @@ void NeuralNetwork::add_layer(unsigned int size) {
 			MatrixXd::Random(
 				layer->activations.size(),
 				last_layer->activations.size()
-			);
+			);//.unaryExpr(&map01);
+
 	}
 }
 
 double NeuralNetwork::get_cost(VectorXd target_outcome) {
-	if (target_outcome.rows() == layers[layers.size()-1].activations.size()) {
-		return target_outcome.transpose() * layers[layers.size()-1].activations;
-	}else {
-		std::cout << "yo dont have same amount of cost items as last layer size" << std::endl;
-		return 0;
-	}
+	VectorXd deltas = (layers[layers.size()-1].activations - target_outcome);
+	return (deltas.transpose() * deltas )(0, 0);
 }
 
-// Backpropagation for one layer (recursively calls
-// itself on layers before)
-void NeuralNetwork::backprop(unsigned int layer_idx, VectorXd expected) {
-	Layer * layer = &layers[layer_idx];
-	Layer * last_layer = &layers[layer_idx-1];
-
-
-	VectorXd activations_error = expected - layer->activations;
-
-	MatrixXd adjusted_weights = last_layer->connection_weights;
-
-	VectorXd adjusted_biases = layer->biases;
-
-	VectorXd next_layer_expected = last_layer->activations;
-	// for every neuron in that layer
-	for (int neuron_idx=0; neuron_idx < layer->activations.size(); neuron_idx++) {
-		double delta_desired = activations_error[neuron_idx];
-
-		// increase bias
-		adjusted_biases[neuron_idx] += delta_desired;
-
-
-		// increase weights coming to me in proportion to their activations
-
-		// for every connected neuron from the left to the neuron
-		for (int conn_neuron_idx=0;
-				conn_neuron_idx < last_layer->activations.size();
-				conn_neuron_idx++
-			) {
-			double conn_neuron_activation =
-				last_layer->activations[conn_neuron_idx];
-			// increase weight based on activation and desired increase
-			adjusted_weights(neuron_idx,conn_neuron_idx) +=
-				conn_neuron_activation * delta_desired;
-
-			// increase activations in proportion to the corresponding weights
-			if (layer_idx > 2) {
-				double corresponding_weight = last_layer->connection_weights(neuron_idx, conn_neuron_idx);
-				if (next_layer_expected[neuron_idx] > 0) {
-					next_layer_expected[neuron_idx] += corresponding_weight;
-				} else {
-					next_layer_expected[neuron_idx] -= corresponding_weight;
-				}
-			}
-
-		}
-
-	}
-	layer->training_biases_sum += adjusted_biases;
-	last_layer->training_connection_weightsums += adjusted_weights;
-
-	if (layer_idx > 2) {
-		// increase activations in the layer before (recursive call of this function again)
-		backprop(layer_idx-1, next_layer_expected);
-	}
+double leakyReluAplpha = 0.001;
+double relu(double x) {
+	if (x>0) return x;
+	else return x*leakyReluAplpha;
 }
 
+double derivativeOfReluOf(double x) {
+	if (x>0) return 1;
+	else return leakyReluAplpha;
+}
 void NeuralNetwork::train_on(VectorXd target_outcome) {
-	backprop(layers.size()-1, target_outcome);
+	Layer * last_layer = &layers[layers.size()-1];
+	VectorXd a_cost_gradient = 2*(
+			last_layer->activations - target_outcome);
+	for (int layer_idx=layers.size()-1; layer_idx > 0; layer_idx--) {
+		Layer * layer = &layers[layer_idx];
+		last_layer = &layers[layer_idx-1];
+
+
+		VectorXd bias_gradient = ( a_cost_gradient.array() *
+			layer->z.unaryExpr(&derivativeOfReluOf).array()).matrix();
+		MatrixXd weight_gradient = bias_gradient *
+			last_layer->activations.transpose();
+		/*std::cout << "uspech weight gradientu" << std::endl;
+
+		std::cout << "weight gradient :" << weight_gradient.rows() << "x" <<
+			weight_gradient.cols() << std::endl;
+			*/
+
+		// Add it to the sum
+		layer->bias_gradients_sum += bias_gradient;
+		//std::cout << "1 pricteni " << std::endl;
+		last_layer->weight_gradients_sum += weight_gradient;
+
+		//std::cout << "uspech pricteni do sumy" << std::endl;
+
+		// Calculate A cost gradient that will be used for calculations
+		// of weight and bias gradients in the next layer
+		MatrixXd tmp_m = (
+			 layer->z.unaryExpr(&derivativeOfReluOf).array() *
+			a_cost_gradient.array()
+			 ).matrix();
+
+		/*std::cout << "conn weights: " << last_layer->connection_weights.transpose().rows() << "x" <<
+last_layer->connection_weights.transpose().cols();
+		std::cout << "tmp_m: " << tmp_m.rows() << "x" << tmp_m.cols() << std::endl;
+		*/
+
+
+		a_cost_gradient = last_layer->connection_weights.transpose() *
+			tmp_m;
+	}
+
 	training_count++;
 }
 
-double sigmoid(double x) {
-	return x / (1 + abs(x));
-}
 
 void NeuralNetwork::calculate() {
+	// for every layer
 	for (int layer_idx = 1; layer_idx < layers.size(); layer_idx++) {
 		Layer * layer = &layers[layer_idx];
 		Layer * last_layer = &layers[layer_idx-1];
-		layer->activations =
+		layer->z =
 			(
 				 last_layer->connection_weights
 				 * last_layer->activations
 				 + layer->biases
-			).unaryExpr(&sigmoid);
+			);
+		layer->activations = layer->z.unaryExpr(&relu);
 	}
 }
 
 int main(int argc, char* argv[]) {
-    // MNIST_DATA_LOCATION set by MNIST cmake config
-    std::cout << "MNIST data directory: " << MNIST_DATA_LOCATION << std::endl;
+	//seed random number gen by time
+	srand(time(NULL)); // "randomize" seed
+
+    // MNIST_DATA_LOCATION set by MNIST cmake config std::cout << "MNIST data directory: " << MNIST_DATA_LOCATION << std::endl;
 
     // Load MNIST data
     mnist::MNIST_dataset<std::vector, std::vector<uint8_t>, uint8_t> dataset =
@@ -195,43 +194,71 @@ int main(int argc, char* argv[]) {
 	network.add_layer(16);
 	network.add_layer(10);
 
+
+	const int desired_number_scalar = 255;
+
+	std::cout << "starting training" << std::endl;
 	network.reset_training_batch();
 
-	for (int image_idx=0; image_idx < /*dataset.training_images.size()*/ 1000; image_idx++) {
-		for (int i=0; i<dataset.training_images[image_idx].size(); i++) {
-			double value = dataset.training_images[image_idx][i] / 255.0;
-			dataset.training_images[image_idx][i] = value;
+	const int batch_n_images = 10;
+	for (int image_batch=0; image_batch < 1000; image_batch++) {
+		for (int image_idx=0; image_idx <  batch_n_images; image_idx++) {
+
+			int image_result_idx = image_batch*batch_n_images + image_idx;
+			for (int i=0; i<dataset.training_images[image_result_idx].size(); i++) {
+				double value = dataset.training_images[image_result_idx][i] / 255.0;
+				network.layers[0].activations[i] = value;
+			}
+
+			network.calculate();
+
+
+			VectorXd desired = VectorXd::Constant(10, 0.0);
+			int target_number = dataset.training_labels[image_result_idx];
+			desired[target_number] = desired_number_scalar;
+
+			network.train_on(desired);
 		}
-
-		network.calculate();
-
-
-		VectorXd desired = VectorXd::Constant(10, 0.0);
-		int target_number = dataset.training_labels[image_idx];
-		desired[target_number] = 1.0;
-
-		network.train_on(desired);
 		network.apply_training_batch();
-
 	}
-	network.apply_training_batch();
 
-	for (int image_idx=0; image_idx < /*dataset.training_images.size()*/ 100; image_idx++) {
+	std::cout << "training complete, i am going to test" << std::endl;
+
+	int correct_tests = 0;
+	int bad_tests = 0;
+	for (int image_idx=0; image_idx < 1000; image_idx++) {
 		for (int i=0; i<dataset.training_images[image_idx].size(); i++) {
 			double value = dataset.training_images[image_idx][i] / 255.0;
-			dataset.training_images[image_idx][i] = value;
+			network.layers[0].activations[i] = value;
 		}
 
 		network.calculate();
+		//std::cout << network.layers[1].z << std::endl;
 
 
 		VectorXd desired = VectorXd::Constant(10, 0.0);
 		int target_number = dataset.training_labels[image_idx];
-		desired[target_number] = 1.0;
+		desired[target_number] = desired_number_scalar;
+
+		VectorXd result_activations = network.layers[network.layers.size()-1].activations;
+
+		int max_idx = 0;
+		double max_value = 0.0;
+		for (int i=0; i<result_activations.size(); i++) {
+			if (result_activations[i] > max_value) {
+				max_idx = i;
+				max_value = result_activations[i];
+			}
+		}
+
+		if (max_idx == target_number) correct_tests++;
+		else bad_tests++;
 
 		const Eigen::IOFormat fmt(2, Eigen::DontAlignCols, "\t", " ", "", "", "", "");
-		std::cout << target_number << " outpu: " << network.layers[network.layers.size()-1].activations.format(fmt) << std::endl;
+		//std::cout << target_number << " cost " << network.get_cost(desired) << " output: " << network.layers[network.layers.size()-1].activations.format(fmt) << std::endl;
 	}
+
+	std::cout << "Test finished. Correct " << correct_tests << "/" << correct_tests+bad_tests << std::endl;
 
     return 0;
 }
