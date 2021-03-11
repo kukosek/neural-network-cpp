@@ -29,13 +29,7 @@ class NeuralNetwork {
 		void reset_training_batch();
 		double training_rate = 0.00005;
 	private:
-		void backprop(unsigned int layer_idx, VectorXd expected);
-
 		unsigned int training_count = 0;
-
-		double divide_by_training_count(double x) {
-			return x/training_count;
-		};
 };
 
 void NeuralNetwork::reset_training_batch() {
@@ -74,10 +68,7 @@ void NeuralNetwork::apply_training_batch() {
 
 }
 
-double map01(double x) {
-	return (x+1) / 2;
-}
-
+// Adds a layer of n ('size') neurons to the network
 void NeuralNetwork::add_layer(unsigned int size) {
 	layers.push_back(Layer());
 	Layer * layer = &layers[layers.size()-1];
@@ -176,10 +167,17 @@ int main(int argc, char* argv[]) {
     std::cout << "Nbr of test images = " << dataset.test_images.size() << std::endl;
     std::cout << "Nbr of test labels = " << dataset.test_labels.size() << std::endl;
 
+	// setup the network
 	NeuralNetwork network = NeuralNetwork();
+
+	//input layer (28*28 pixels = 784 neurons)
 	network.add_layer(784);
+
+	//hidden layers, can be tweaked
 	network.add_layer(16);
 	network.add_layer(16);
+
+	//output layer ( digits 0-9 )
 	network.add_layer(10);
 
 
@@ -188,25 +186,33 @@ int main(int argc, char* argv[]) {
 	std::cout << "starting training" << std::endl;
 	network.reset_training_batch();
 
-	const int batch_n_images = 20;
+	const int batch_n_images = 20; // average of how many gradients will be applied
+	// for every "training batch" of images
 	for (int image_batch=0; image_batch < dataset.training_images.size()/batch_n_images; image_batch++) {
 		for (int image_idx=0; image_idx <  batch_n_images; image_idx++) {
 
 			int image_result_idx = image_batch*batch_n_images + image_idx;
+
+			// for every pixel in the image
 			for (int i=0; i<dataset.training_images[image_result_idx].size(); i++) {
 				double value = dataset.training_images[image_result_idx][i] / 255.0;
+				// put it in the first layer's activations
 				network.layers[0].activations[i] = value;
 			}
 
+			// calculate all neuron activations
 			network.calculate();
 
 
+			// this is the target vector we want the last layer to be
 			VectorXd desired = VectorXd::Constant(10, 0.0);
 			int target_number = dataset.training_labels[image_result_idx];
 			desired[target_number] = desired_number_scalar;
 
+			// calculates the curent gradient based on the target vector
 			network.train_on(desired);
 		}
+		// applies the average gradient
 		network.apply_training_batch();
 	}
 
@@ -214,21 +220,28 @@ int main(int argc, char* argv[]) {
 
 	int correct_tests = 0;
 	int bad_tests = 0;
-	for (int image_idx=0; image_idx < 1000; image_idx++) {
-		for (int i=0; i<dataset.training_images[image_idx].size(); i++) {
-			double value = dataset.training_images[image_idx][i] / 255.0;
+	// for every image in test dataset
+	for (int image_idx=0; image_idx < dataset.test_labels.size(); image_idx++) {
+		// for every pixel of image
+		for (int i=0; i<dataset.test_images[image_idx].size(); i++) {
+			double value = dataset.test_images[image_idx][i] / 255.0;
 			network.layers[0].activations[i] = value;
 		}
 
+		// calculate activations of neuron
 		network.calculate();
 
 
+		// can be used for cost calculations
 		VectorXd desired = VectorXd::Constant(10, 0.0);
-		int target_number = dataset.training_labels[image_idx];
+		int target_number = dataset.test_labels[image_idx];
 		desired[target_number] = desired_number_scalar;
 
+		// activations of the output layer
 		VectorXd result_activations = network.layers[network.layers.size()-1].activations;
 
+		// determine the brightest neuron
+		// (thats the guess of the network, whats the digit)
 		int max_idx = 0;
 		double max_value = 0.0;
 		for (int i=0; i<result_activations.size(); i++) {
@@ -238,11 +251,13 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
+		// increase stat counters
 		if (max_idx == target_number) correct_tests++;
 		else bad_tests++;
 
-		const Eigen::IOFormat fmt(2, Eigen::DontAlignCols, "\t", " ", "", "", "", "");
-		//std::cout << target_number << " cost " << network.get_cost(desired) << " output: " << network.layers[network.layers.size()-1].activations.format(fmt) << std::endl;
+		// detailed test prints
+		// const Eigen::IOFormat fmt(2, Eigen::DontAlignCols, "\t", " ", "", "", "", "");
+		// std::cout << target_number << " cost " << network.get_cost(desired) << " output: " << network.layers[network.layers.size()-1].activations.format(fmt) << std::endl;
 	}
 
 	std::cout << "Test finished. Correct " << correct_tests << "/" << correct_tests+bad_tests << std::endl;
