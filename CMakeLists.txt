@@ -12,7 +12,7 @@ if(NOT MNIST_FOUND)
 endif(NOT MNIST_FOUND)
 
 include_directories(${MNIST_INCLUDE_DIR})
-add_executable(${PROJECT_NAME} main.cpp)
+add_executable(${PROJECT_NAME} main.cpp NeuralNetwork.cpp)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_range_for)
 
 # Pass MNIST data directory to main.cpp
