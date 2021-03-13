@@ -1,4 +1,33 @@
 #include "NeuralNetwork.hpp"
+#include <iostream>
+#include <filesystem>
+#include <fstream>
+#include <string>
+
+namespace fs = std::filesystem;
+
+namespace Eigen{
+	template<class Matrix>
+	void write_binary(std::string filename, const Matrix& matrix){
+		std::ofstream out(filename, std::ios::out | std::ios::binary | std::ios::trunc);
+		typename Matrix::Index rows=matrix.rows(), cols=matrix.cols();
+		out.write((char*) (&rows), sizeof(typename Matrix::Index));
+		out.write((char*) (&cols), sizeof(typename Matrix::Index));
+		out.write((char*) matrix.data(), rows*cols*sizeof(typename Matrix::Scalar) );
+		out.close();
+	}
+	template<class Matrix>
+	void read_binary(const char* filename, Matrix& matrix){
+		std::ifstream in(filename, std::ios::in | std::ios::binary);
+		typename Matrix::Index rows=0, cols=0;
+		in.read((char*) (&rows),sizeof(typename Matrix::Index));
+		in.read((char*) (&cols),sizeof(typename Matrix::Index));
+		matrix.resize(rows, cols);
+		in.read( (char *) matrix.data() , rows*cols*sizeof(typename Matrix::Scalar) );
+		in.close();
+	}
+} // Eigen::
+
 
 void NeuralNetwork::reset_training_batch() {
 	for (int layer_idx = 0; layer_idx < layers.size(); layer_idx++) {
@@ -36,16 +65,38 @@ void NeuralNetwork::apply_training_batch() {
 
 }
 
-// Adds a layer of n ('size') neurons to the network
-void NeuralNetwork::add_layer(unsigned int size) {
-	layers.push_back(Layer());
-	Layer * layer = &layers[layers.size()-1];
-	layer->activations = VectorXd::Constant(size, 1.0);
+void NeuralNetwork::add_to_sum_from_network(NeuralNetwork & src_network) {
+	if (src_network.layers.size() == layers.size()) {
+		for (int layer_idx=0; layer_idx < layers.size(); layer_idx++) {
+			Layer * src_layer = &src_network.layers[layer_idx];
+			Layer * dest_layer = &layers[layer_idx];
 
-	layer->biases = VectorXd::Constant(size, 1.0);
+			if (src_layer->bias_gradients_sum.rows() == dest_layer->bias_gradients_sum.rows()) {
+				if (src_layer->weight_gradients_sum.rows() == dest_layer->weight_gradients_sum.rows()
+						&& src_layer->weight_gradients_sum.cols() == dest_layer->weight_gradients_sum.cols()
+				   ) {
+					dest_layer->bias_gradients_sum += src_layer->bias_gradients_sum;
+					dest_layer->weight_gradients_sum += src_layer->weight_gradients_sum;
+				}
+				else std::cout << "Assert weight cols rows failed" << std::endl;
+			}
+			else std::cout << "Assert bias rows failed " << std::endl;
+		}
+	}else{
+		std::cout << "Assert src_network layers size failed";
+	}
+}
 
-	if (layers.size() > 1) {
-		Layer * last_layer = &layers[layers.size()-2];
+double map11to01(double x) {
+	return (x+1) /2;
+}
+
+void NeuralNetwork::randomize_layer(int layer_idx) {
+	Layer * layer = &layers[layer_idx];
+	layer->biases = VectorXd::Random(layer->activations.rows()).unaryExpr(&map11to01);
+
+	if (layer_idx > 0) {
+		Layer * last_layer = &layers[layer_idx-1];
 		last_layer->connection_weights =
 			MatrixXd::Random(
 				layer->activations.size(),
@@ -53,6 +104,37 @@ void NeuralNetwork::add_layer(unsigned int size) {
 			);//.unaryExpr(&map01);
 
 	}
+}
+
+void NeuralNetwork::randomize() {
+	for (int layer_idx=0; layer_idx<layers.size(); layer_idx++) {
+		randomize_layer(layer_idx);
+	}
+}
+
+void NeuralNetwork::save_trainresults_as_best() {
+	for (int layer_idx=0; layer_idx<layers.size(); layer_idx++) {
+		Layer * layer = &layers[layer_idx];
+		layer->biases_best_found = layer->biases;
+		layer->weights_best_found = layer->connection_weights;
+	}
+}
+
+void NeuralNetwork::load_best_setup() {
+	for (int layer_idx=0; layer_idx<layers.size(); layer_idx++) {
+		Layer * layer = &layers[layer_idx];
+		layer->biases = layer->biases_best_found;
+		layer->connection_weights = layer->weights_best_found;
+	}
+}
+
+
+// Adds a layer of n ('size') neurons to the network
+void NeuralNetwork::add_layer(unsigned int size) {
+	layers.push_back(Layer());
+	Layer * layer = &layers[layers.size()-1];
+	layer->activations = VectorXd::Constant(size, 1.0);
+	randomize_layer(layers.size()-1);
 }
 
 double NeuralNetwork::get_cost(VectorXd target_outcome) {
@@ -117,5 +199,57 @@ void NeuralNetwork::calculate() {
 				 + layer->biases
 			);
 		layer->activations = layer->z.unaryExpr(&relu);
+	}
+}
+
+void NeuralNetwork::save_to_files(std::string foldername) {
+	fs::remove_all(foldername);
+	fs::create_directory(foldername);
+	for (int layer_idx = 0; layer_idx < layers.size(); layer_idx++) {
+		Layer * layer = &layers[layer_idx];
+		Eigen::write_binary(
+				foldername+'/'+"biases"+std::to_string(layer_idx)+".dat",
+				layer->biases
+			);
+		Eigen::write_binary(
+				foldername+'/'+"weights"+std::to_string(layer_idx)+".dat",
+				layer->connection_weights
+			);
+	}
+}
+
+bool NeuralNetwork::load_from_files(std::string foldername) {
+	if (fs::exists(foldername)) {
+		for (int layer_idx = 0; layer_idx < layers.size(); layer_idx++) {
+			Layer * layer = &layers[layer_idx];
+
+			MatrixXd readed_weights;
+			Eigen::read_binary(
+					(foldername+'/'+"weights"+std::to_string(layer_idx)+".dat").c_str(),
+					readed_weights
+				);
+			if (readed_weights.rows() == layer->connection_weights.rows()
+					&& readed_weights.cols() == layer->connection_weights.cols()
+			   ) {
+				VectorXd readed_biases;
+				Eigen::read_binary(
+						(foldername+'/'+"biases"+std::to_string(layer_idx)+".dat").c_str(),
+						readed_biases
+					);
+				if (readed_biases.rows() == layer->biases.rows()
+						&& readed_biases.cols() == layer->biases.cols()
+				   ) {
+					layer->biases = readed_biases;
+					layer->connection_weights = readed_weights;
+				} else{
+					return false;
+				}
+			} else {
+				return false;
+			}
+		}
+		return true;
+	} else {
+		return false;
 	}
 }
