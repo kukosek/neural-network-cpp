@@ -1,5 +1,6 @@
 #include "NeuralNetwork.hpp"
 #include <iostream>
+#include <iterator>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -205,8 +206,18 @@ void NeuralNetwork::calculate() {
 void NeuralNetwork::save_to_files(std::string foldername) {
 	fs::remove_all(foldername);
 	fs::create_directory(foldername);
+	std::ofstream metadata;
+	metadata.open(foldername+"/network_metadata.txt");
+	if (!metadata) {
+		std::cout << "... Meta file not created!";
+	}
+	metadata << layers.size() << std::endl;
 	for (int layer_idx = 0; layer_idx < layers.size(); layer_idx++) {
 		Layer * layer = &layers[layer_idx];
+
+		if (layer_idx != 0) metadata << " ";
+		metadata << layer->activations.size();
+
 		Eigen::write_binary(
 				foldername+'/'+"biases"+std::to_string(layer_idx)+".dat",
 				layer->biases
@@ -216,12 +227,52 @@ void NeuralNetwork::save_to_files(std::string foldername) {
 				layer->connection_weights
 			);
 	}
+	metadata << std::endl;
+	metadata << training_rate << std::endl;
+	metadata.close();
 }
 
 bool NeuralNetwork::load_from_files(std::string foldername) {
 	if (fs::exists(foldername)) {
+		std::ifstream metadata;
+		metadata.open(foldername+"/network_metadata.txt");
+		bool error = false;
+		if (metadata) {
+			std::string n_of_layers_str;
+			getline(metadata, n_of_layers_str);
+			int n_of_layers = std::stoi(n_of_layers_str);
+
+			std::string layers_sizes_str;
+			getline(metadata, layers_sizes_str);
+			std::istringstream iss(layers_sizes_str);
+			std::vector<std::string> layers_sizes_strarr(
+					(std::istream_iterator<std::string>(iss)),
+                                 std::istream_iterator<std::string>());
+			if (n_of_layers == layers_sizes_strarr.size()) {
+				std::vector<int> layers_sizes;
+				for (int i=0; i<n_of_layers; i++) {
+					int neurons = std::stoi(layers_sizes_strarr[i]);
+					if (neurons > 0) layers_sizes.push_back(neurons);
+					else {error = true; break;};
+				}
+				if (!error) {
+					layers.clear();
+					for (int i=0; i<n_of_layers; i++) {
+						add_layer(layers_sizes[i]);
+					}
+				}
+			}
+			std::string rate_str;
+			getline(metadata, rate_str);
+			double rate = ::atof(rate_str.c_str());
+			if (rate != 0) {
+				training_rate = rate;
+			}
+			metadata.close();
+		}
 		for (int layer_idx = 0; layer_idx < layers.size(); layer_idx++) {
 			Layer * layer = &layers[layer_idx];
+
 
 			MatrixXd readed_weights;
 			Eigen::read_binary(
@@ -248,7 +299,7 @@ bool NeuralNetwork::load_from_files(std::string foldername) {
 				return false;
 			}
 		}
-		return true;
+		return !error;
 	} else {
 		return false;
 	}

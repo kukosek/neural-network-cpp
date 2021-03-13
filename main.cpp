@@ -1,5 +1,7 @@
 #include <iostream>
+#include <sstream>
 #include <time.h>
+#include <string>
 #include <signal.h>
 #include <vector>
 #include "mnist/mnist_reader.hpp"
@@ -11,16 +13,68 @@ using Eigen::VectorXd;
 
 NeuralNetwork network;
 
-const char * datafolder_name = "training_data";
+std::string outputfolder_name = "training_data";
 
 void signal_handler(int s) {
 	std::cout << std::endl << "Training ended. Saving." << std::endl;
 	network.load_best_setup();
-	network.save_to_files(datafolder_name);
+	network.save_to_files(outputfolder_name);
 	std::cout << "Bye" << std::endl;
 	exit(1);
 }
 int main(int argc, char* argv[]) {
+	std::string inputfolder_name = outputfolder_name;
+	bool layersizes_set = false;
+	std::vector<int> userdefined_layersizes;
+	bool inputdir_set = false;
+	bool outputdir_set = false;
+	for (int i = 1; i < argc; ++i) {
+		std::string argument(argv[i]);
+        if ((argument == "--input-dir" || argument == "-i") && argc > i+1) {
+			inputfolder_name = argv[i+1];
+			inputdir_set = true;
+			i++;
+		} else if ((argument == "--output-dir" || argument == "-o") && argc > i+1) {
+			outputdir_set = true;
+
+			outputfolder_name = argv[i+1];
+			if (!inputdir_set)
+				inputfolder_name = outputfolder_name;
+			i++;
+		} else if ((argument == "--learning-rate" || argument == "-lr") && argc > i+1) {
+			double rate = ::atof(argv[i+1]);
+			if (rate == 0) {
+				std::cout << "Learning rate must be >0. Bye" << std::endl;
+				exit(1);
+			} else {
+				network.training_rate = rate;
+			}
+			i++;
+		} else if ((argument == "--layers" || argument == "-l") && argc > i+1) {
+			std::istringstream f(argv[i+1]);
+			std::string s;
+			layersizes_set = true;
+			while (getline(f, s, ',')) {
+				int layersize = std::atoi(s.c_str());
+				if (layersize > 0) {
+					userdefined_layersizes.push_back(layersize);
+				}else{
+					layersizes_set = false;
+				}
+			}
+			i++;
+		} else {
+			std::cout << "USAGE:" << std::endl <<
+				"	--output-dir, -o string			sets training data save dir" << std::endl
+			<<  "	--input-dir,  -i string			sets training data dir to load" << std::endl
+			<<  "	--learning-rate, -lr double		sets network learning rate" << std::endl
+			<<  "	--layers, -l string				sets n of neurons in layers. delimeter ','";
+			exit(1);
+		}
+		if (inputdir_set && !outputdir_set) {
+			outputfolder_name = inputfolder_name;
+		}
+	}
 	struct sigaction sigIntHandler;
 
 	sigIntHandler.sa_handler = signal_handler;
@@ -46,17 +100,27 @@ int main(int argc, char* argv[]) {
 	// setup the network
 	network = NeuralNetwork();
 
-	//input layer (28*28 pixels = 784 neurons)
-	network.add_layer(784);
+	bool skip_next_training = false;
+	if (layersizes_set) {
+		for (int i=0; i<userdefined_layersizes.size(); i++)
+			network.add_layer(userdefined_layersizes[i]);
+	} else{
+		//input layer (28*28 pixels = 784 neurons)
+		network.add_layer(784);
 
-	//hidden layers, can be tweaked
-	network.add_layer(16);
-	network.add_layer(16);
+		//hidden layers, can be tweaked
+		network.add_layer(16);
+		network.add_layer(16);
 
-	//output layer ( digits 0-9 )
-	network.add_layer(10);
+		//output layer ( digits 0-9 )
+		network.add_layer(10);
 
-	bool skip_next_training = network.load_from_files(datafolder_name);
+	}
+
+	if (!layersizes_set || inputdir_set) {
+		skip_next_training = network.load_from_files(inputfolder_name);
+	}
+
 
 	std::cout << "Starting training iterations" << std::endl << std::endl;
 
