@@ -34,7 +34,7 @@ class NeuralNetwork {
 		void save_to_files(std::string foldername);
 		bool load_from_files(std::string foldername);
 		double training_rate = 0.00005;
-		NeuralNetwork() = default;
+		NeuralNetwork();
 		//copy constructor - probably doesnt work
 		NeuralNetwork(const NeuralNetwork &src_network) {
 			layers = src_network.layers;

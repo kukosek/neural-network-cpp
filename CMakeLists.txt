@@ -19,6 +19,17 @@ include_directories(${MNIST_INCLUDE_DIR})
 add_executable(${PROJECT_NAME} main.cpp NeuralNetwork.cpp)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_range_for)
 
+target_link_libraries (${PROJECT_NAME} Eigen3::Eigen)
+
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++14")
+find_package(CUDA QUIET REQUIRED)
+include_directories(${CUDA_INCLUDE_DIRS})
+include_directories(gpumatrix/include)
+add_subdirectory(gpumatrix/src)
+target_link_libraries(${PROJECT_NAME} GPUMatrix)
+target_link_libraries(${PROJECT_NAME} ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+
+
 # Pass MNIST data directory to main.cpp
 target_compile_definitions(${PROJECT_NAME} PRIVATE MNIST_DATA_LOCATION="${MNIST_DATA_DIR}")
 target_link_libraries (${PROJECT_NAME} Eigen3::Eigen)
