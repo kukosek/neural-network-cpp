@@ -3,4 +3,4 @@
 	url = https://github.com/wichtounet/mnist.git
 [submodule "gpumatrix"]
 	path = gpumatrix
-	url = https://github.com/rudaoshi/gpumatrix
+	url = https://github.com/kukosek/gpumatrix.git
