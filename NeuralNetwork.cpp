@@ -34,41 +34,6 @@ namespace Eigen{
 } // Eigen::
 
 NeuralNetwork::NeuralNetwork() {
-	cublasInit();
-	int row1 = rand()%1000+1;
-	int col1 = rand()%1000+1;
-
-	int row2 = rand()%1000+1;
-	int col2 = rand()%1000+1;
-	Eigen::MatrixXd h_A1 = Eigen::MatrixXd::Random(row1,col1);
-	Eigen::MatrixXd h_A2 = Eigen::MatrixXd::Random(row2,col2);
-
-	Eigen::VectorXd h_B1 = Eigen::VectorXd::Random(col1);
-	Eigen::VectorXd h_B2 = Eigen::VectorXd::Random(row2);
-
-	gpumatrix::Matrix<double> d_A1(h_A1), d_A2(h_A2);
-	gpumatrix::Vector<double> d_B1(h_B1), d_B2(h_B2);
-
-	gpumatrix::Vector<double> d_C1, d_C2;
-
-
-	auto start = high_resolution_clock::now();
-	d_C1 =  d_A1*d_B1;
-	d_C2 =  d_A2.transpose()*d_B2;
-	auto stop = high_resolution_clock::now();
-	auto duration = duration_cast<microseconds>(stop - start);
-	std::cout << "On GPU: " << duration.count() << " microseconds" << std::endl;
-
-	start = high_resolution_clock::now();
-	Eigen::VectorXd h_C1 = h_A1*h_B1;
-	Eigen::VectorXd h_C2 = h_A2.transpose()*h_B2;
-	stop = high_resolution_clock::now();
-	duration = duration_cast<microseconds>(stop - start);
-	std::cout << "On CPU: " << duration.count() << " microseconds" << std::endl;
-
-	std::cout << d_C1.rows() << "x" << d_C1.cols() << std::endl;
-	cublasShutdown();
-
 }
 
 
