@@ -24,9 +24,6 @@ target_link_libraries (${PROJECT_NAME} Eigen3::Eigen)
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++14")
 find_package(CUDA QUIET REQUIRED)
 include_directories(${CUDA_INCLUDE_DIRS})
-include_directories(gpumatrix/include)
-add_subdirectory(gpumatrix/src)
-target_link_libraries(${PROJECT_NAME} GPUMatrix)
 target_link_libraries(${PROJECT_NAME} ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
 
 

@@ -1,12 +1,10 @@
 #include "NeuralNetwork.hpp"
-#include "gpumatrix/GpuMatrixBase.h"
 #include <iostream>
 #include <iterator>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <gpumatrix/CORE>
 
 namespace fs = std::filesystem;
 using namespace std::chrono;
