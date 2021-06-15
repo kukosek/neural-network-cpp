@@ -15,19 +15,33 @@ if(NOT MNIST_FOUND)
 endif(NOT MNIST_FOUND)
 
 
-include_directories(${MNIST_INCLUDE_DIR})
-add_executable(${PROJECT_NAME} main.cpp NeuralNetwork.cpp)
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_range_for)
+add_executable(train main.cpp NeuralNetwork.cpp)
+target_compile_features(train PRIVATE cxx_range_for)
 
-target_link_libraries (${PROJECT_NAME} Eigen3::Eigen)
-
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++14")
-find_package(CUDA QUIET REQUIRED)
-include_directories(${CUDA_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} ${CUDA_LIBRARIES} ${CUDA_CUBLAS_LIBRARIES})
+target_link_libraries (train Eigen3::Eigen)
 
 
 # Pass MNIST data directory to main.cpp
-target_compile_definitions(${PROJECT_NAME} PRIVATE MNIST_DATA_LOCATION="${MNIST_DATA_DIR}")
-target_link_libraries (${PROJECT_NAME} Eigen3::Eigen)
-target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+target_compile_definitions(train PRIVATE MNIST_DATA_LOCATION="${MNIST_DATA_DIR}")
+target_link_libraries (train Eigen3::Eigen)
+target_link_libraries(train OpenMP::OpenMP_CXX)
+
+
+# gui
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GTK REQUIRED gtkmm-3.0)
+
+add_executable(gui gui.cpp NeuralNetwork.cpp)
+target_compile_features(gui PRIVATE cxx_range_for)
+
+target_compile_definitions(gui PRIVATE MNIST_DATA_LOCATION="${MNIST_DATA_DIR}")
+target_link_libraries (gui Eigen3::Eigen)
+target_link_libraries(gui OpenMP::OpenMP_CXX)
+
+INCLUDE_DIRECTORIES(${GTK_INCLUDE_DIRS} ${MNIST_INCLUDE_DIR})
+LINK_DIRECTORIES(${GTK_LIBRARY_DIRS})
+
+# Add other flags to the compiler
+ADD_DEFINITIONS(${GTK_CFLAGS_OTHER})
+
+TARGET_LINK_LIBRARIES(gui ${GTK_LIBRARIES})
